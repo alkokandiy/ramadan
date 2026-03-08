@@ -13,16 +13,6 @@ const scores = {
   sadaqa: new Map()
 };
 
-// Webhook endpoint
-module.exports = async (req, res) => {
-  if (req.method === 'POST') {
-    bot.processUpdate(req.body);
-    res.status(200).send('OK');
-  } else {
-    res.status(404).send('Not found');
-  }
-};
-
 // Bot commands
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -38,21 +28,25 @@ bot.onText(/\/start/, (msg) => {
   );
 });
 
-// API for webapp
+// Export the handler function
 module.exports = async (req, res) => {
-  if (req.method === 'POST') {
-    const path = req.url;
-    
+  // Handle different API endpoints
+  const { method, url, body } = req;
+  
+  // Parse URL to get path
+  const path = url.split('?')[0];
+  
+  if (method === 'POST') {
     // Register user
     if (path === '/api/register') {
-      const { telegramId, name } = req.body;
+      const { telegramId, name } = body;
       users.set(telegramId, { name, registeredAt: new Date() });
       return res.json({ success: true });
     }
     
     // Save score
     if (path === '/api/save') {
-      const { telegramId, name, type, value } = req.body;
+      const { telegramId, name, type, value } = body;
       users.set(telegramId, { name });
       if (scores[type]) {
         scores[type].set(telegramId, value);
@@ -60,6 +54,15 @@ module.exports = async (req, res) => {
       return res.json({ success: true });
     }
     
+    // Handle bot webhook
+    if (path === '/api/bot') {
+      bot.processUpdate(body);
+      return res.status(200).send('OK');
+    }
+  }
+  
+  // GET requests
+  if (method === 'GET') {
     // Get leaderboard
     if (path === '/api/leaderboard') {
       const result = {};
@@ -76,11 +79,8 @@ module.exports = async (req, res) => {
       
       return res.json(result);
     }
-    
-    // Handle bot webhook
-    bot.processUpdate(req.body);
-    res.status(200).send('OK');
-  } else {
-    res.status(404).send('Not found');
   }
+  
+  // If no route matches
+  res.status(404).json({ error: 'Not found' });
 };

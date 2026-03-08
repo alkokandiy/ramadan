@@ -1,6 +1,7 @@
 {
     "name": "ramadan-bot",
     "version": "1.0.0",
+    "description": "Ramadan Tracker with Telegram Bot",
     "dependencies": {
       "node-telegram-bot-api": "^0.64.0"
     }
