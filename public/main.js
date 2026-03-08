@@ -1660,3 +1660,91 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 1000);
 });
+
+// ═══════════════ TELEGRAM SYNC ═══════════════
+
+// Save user data to backend
+async function saveToBackend(type, value) {
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    const name = localStorage.getItem('user_display_name');
+    
+    if (!user.id || !name) return;
+    
+    try {
+      await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegramId: user.id,
+          name: name,
+          type: type,
+          value: value
+        })
+      });
+    } catch (err) {
+      console.error('Backend save error:', err);
+    }
+  }
+  
+  // Load leaderboard from backend
+  async function loadLeaderboards() {
+    try {
+      const res = await fetch('/api/leaderboard');
+      const data = await res.json();
+      
+      // Update Quran leaderboard
+      if (data.quran && document.getElementById('quranLeaderboard')) {
+        const html = data.quran.map((u, i) => `
+          <div class="leaderboard-item">
+            <div class="lb-rank ${i < 3 ? 'top' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
+            <div class="lb-avatar">${u.name.charAt(0)}</div>
+            <div class="lb-info">
+              <div class="lb-name">${u.name}</div>
+              <div class="lb-sub">${u.pages} bet</div>
+            </div>
+            <div class="lb-score">${u.pages * 10} ✨</div>
+          </div>
+        `).join('');
+        document.getElementById('quranLeaderboard').innerHTML = html || '<div style="text-align:center; padding:20px;">Hali ma\'lumot yo\'q</div>';
+      }
+      
+      // Similar for dhikr and sadaqa...
+      if (data.dhikr && document.getElementById('dhikrLeaderboard')) {
+        // ... render dhikr leaderboard
+      }
+      
+      if (data.sadaqa && document.getElementById('sadaqaLeaderboard')) {
+        // ... render sadaqa leaderboard
+      }
+      
+    } catch (err) {
+      console.error('Load leaderboard error:', err);
+    }
+  }
+  
+  // Override existing functions to sync
+  const originalLogPages = window.logPages;
+  window.logPages = function() {
+    if (originalLogPages) originalLogPages();
+    saveToBackend('quran', state.pageTotal || 0);
+  };
+  
+  const originalCompleteDhikr = window.completeDhikr;
+  window.completeDhikr = function() {
+    if (originalCompleteDhikr) originalCompleteDhikr();
+    saveToBackend('dhikr', state.dhikrTotal || 0);
+  };
+  
+  const originalLogCharity = window.logCharity;
+  window.logCharity = function() {
+    if (originalLogCharity) originalLogCharity();
+    const total = (state.charity || []).reduce((s, c) => s + c.amount, 0);
+    saveToBackend('sadaqa', total);
+  };
+  
+  // Load leaderboard when page loads
+  document.addEventListener('DOMContentLoaded', function() {
+    if (localStorage.getItem('user_display_name')) {
+      loadLeaderboards();
+    }
+  });

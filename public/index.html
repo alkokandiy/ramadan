@@ -10,6 +10,8 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400&family=Noto+Naskh+Arabic:wght@400;500&display=swap"
     rel="stylesheet">
+    <!-- Telegram Web App SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
       --ivory: #F5F0E8;
@@ -1885,6 +1887,35 @@
       margin-top: 4px;
     }
   </style>
+
+  <!-- Telegram Web App SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<!-- Add this script before your main.js -->
+<script>
+  // Initialize Telegram Web App
+  let tg = window.Telegram?.WebApp;
+  let userData = null;
+  
+  if (tg) {
+    tg.expand(); // Expand to full height
+    tg.ready(); // Notify Telegram that app is ready
+    
+    // Get user data from Telegram
+    if (tg.initDataUnsafe?.user) {
+      userData = tg.initDataUnsafe.user;
+      console.log('Telegram user:', userData);
+      
+      // Store in localStorage for your app to use
+      localStorage.setItem('telegram_user', JSON.stringify({
+        id: userData.id,
+        username: userData.username || `${userData.first_name} ${userData.last_name || ''}`.trim(),
+        first_name: userData.first_name,
+        last_name: userData.last_name
+      }));
+    }
+  }
+</script>
 </head>
 
 <body>
@@ -2481,5 +2512,84 @@
   </div>
 
   <script src="./main.js"></script>
+  <!-- Name Input Modal -->
+<div id="nameModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+  <div style="background: var(--paper); border-radius: 20px; padding: 24px; max-width: 320px; width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
+    <h3 style="color: var(--green-deep); margin-bottom: 16px;">👋 Telegram orqali kirdingiz</h3>
+    <p style="color: var(--text-muted); margin-bottom: 16px;">Ismingizni tasdiqlang:</p>
+    <input type="text" id="telegramNameInput" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px;" placeholder="Ismingiz">
+    <div style="display: flex; gap: 12px;">
+      <button onclick="saveTelegramName()" class="btn btn-primary" style="flex: 2;">Davom etish</button>
+      <button onclick="closeNameModal()" class="btn btn-outline" style="flex: 1;">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- Telegram Integration Script -->
+<script>
+  // Initialize Telegram
+  let tg = window.Telegram?.WebApp;
+  let telegramUser = null;
+  
+  if (tg) {
+    tg.expand();
+    tg.ready();
+    
+    if (tg.initDataUnsafe?.user) {
+      telegramUser = tg.initDataUnsafe.user;
+      localStorage.setItem('telegram_user', JSON.stringify({
+        id: telegramUser.id,
+        username: telegramUser.username || `${telegramUser.first_name} ${telegramUser.last_name || ''}`.trim(),
+        first_name: telegramUser.first_name
+      }));
+    }
+  }
+  
+  // Modal functions
+  function showNameModal() {
+    const modal = document.getElementById('nameModal');
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    const input = document.getElementById('telegramNameInput');
+    if (input) input.value = user.username || '';
+    if (modal) modal.style.display = 'flex';
+  }
+  
+  function closeNameModal() {
+    document.getElementById('nameModal').style.display = 'none';
+  }
+  
+  function saveTelegramName() {
+    const name = document.getElementById('telegramNameInput').value.trim();
+    if (!name) {
+      alert('Iltimos, ismingizni kiriting');
+      return;
+    }
+    
+    localStorage.setItem('user_display_name', name);
+    closeNameModal();
+    
+    // Register with backend
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegramId: user.id,
+        name: name
+      })
+    }).then(() => {
+      if (typeof loadLeaderboards === 'function') loadLeaderboards();
+    });
+  }
+  
+  // Check if user needs to register
+  document.addEventListener('DOMContentLoaded', function() {
+    const hasTelegram = localStorage.getItem('telegram_user');
+    const registered = localStorage.getItem('user_display_name');
+    if (hasTelegram && !registered) {
+      setTimeout(showNameModal, 500);
+    }
+  });
+</script>
 </body>
 </html>
