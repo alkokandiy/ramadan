@@ -1,5 +1,4 @@
 const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app';
-
 // Then update all fetch calls:
 // FROM:
 fetch('/api/register', {...})
