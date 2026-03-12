@@ -1,5 +1,4 @@
-// Add this at the top of main.js
-const RAILWAY_URL = 'ramadan-production-8799.up.railway.app'; // You'll get this after deployment
+const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app';
 
 // Then update all fetch calls:
 // FROM:
