@@ -1,6 +1,10 @@
 // ===== TELEGRAM INTEGRATION =====
 // This MUST be at the very top of main.js
 
+// ===== RAILWAY BACKEND URL =====
+// DEFINE THIS FIRST BEFORE ANY FUNCTIONS THAT USE IT!
+const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app'; // Your actual Railway URL
+
 // Initialize Telegram Web App
 let tg = window.Telegram?.WebApp;
 let telegramUser = null;
@@ -128,11 +132,6 @@ async function joinAllLeaderboards(name, telegramId) {
     }
 }
 
-// ===== RAILWAY BACKEND URL =====
-const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app'; // Update this!
-// ===== RAILWAY BACKEND URL =====
-// REPLACE THIS WITH YOUR ACTUAL RAILWAY URL
-const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app';
 // ═══════════════ DATA ═══════════════
 const RAMADAN_DAYS = 30;
 const RAMADAN_START = '2026-02-19'; // Ramadan 1 (Toshkent)
