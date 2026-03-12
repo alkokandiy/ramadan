@@ -1,7 +1,138 @@
+// ===== TELEGRAM INTEGRATION =====
+// This MUST be at the very top of main.js
+
+// Initialize Telegram Web App
+let tg = window.Telegram?.WebApp;
+let telegramUser = null;
+
+if (tg) {
+    tg.expand(); // Expand to full height
+    tg.ready(); // Notify Telegram that app is ready
+    
+    if (tg.initDataUnsafe?.user) {
+        telegramUser = tg.initDataUnsafe.user;
+        console.log('Telegram user detected:', telegramUser);
+        
+        // Store in localStorage
+        localStorage.setItem('telegram_user', JSON.stringify({
+            id: telegramUser.id,
+            username: telegramUser.username || `${telegramUser.first_name} ${telegramUser.last_name || ''}`.trim(),
+            first_name: telegramUser.first_name,
+            last_name: telegramUser.last_name || ''
+        }));
+        
+        // Check if user already has a name
+        const existingName = localStorage.getItem('user_display_name');
+        if (!existingName) {
+            // Show name modal after a short delay
+            setTimeout(() => {
+                showNameModal();
+            }, 500);
+        }
+    }
+} else {
+    console.log('Not running in Telegram');
+}
+
+// Name Modal Functions
+function showNameModal() {
+    const modal = document.getElementById('nameModal');
+    if (!modal) {
+        console.error('Name modal not found in DOM');
+        return;
+    }
+    
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    const input = document.getElementById('telegramNameInput');
+    
+    if (input) {
+        // Pre-fill with Telegram username
+        input.value = user.username || user.first_name || '';
+    }
+    
+    modal.style.display = 'flex';
+}
+
+function closeNameModal() {
+    const modal = document.getElementById('nameModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveTelegramName() {
+    const input = document.getElementById('telegramNameInput');
+    const name = input?.value.trim();
+    
+    if (!name) {
+        alert('Iltimos, ismingizni kiriting');
+        return;
+    }
+    
+    // Save locally
+    localStorage.setItem('user_display_name', name);
+    
+    // Get Telegram user
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    
+    // Register with backend
+    try {
+        const response = await fetch(`${RAILWAY_URL}/api/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                telegramId: user.id,
+                name: name
+            })
+        });
+        
+        if (response.ok) {
+            console.log('User registered successfully');
+            closeNameModal();
+            
+            // Join all leaderboards automatically
+            await joinAllLeaderboards(name, user.id);
+            
+            // Load leaderboards
+            loadLeaderboards();
+        } else {
+            console.error('Registration failed');
+            // Still close modal and use local
+            closeNameModal();
+            renderLocalLeaderboards();
+        }
+    } catch (err) {
+        console.error('Registration error:', err);
+        closeNameModal();
+        renderLocalLeaderboards();
+    }
+}
+
+async function joinAllLeaderboards(name, telegramId) {
+    // Initialize user in all leaderboards with zero scores
+    const types = ['quran', 'dhikr', 'sadaqa'];
+    
+    for (const type of types) {
+        try {
+            await fetch(`${RAILWAY_URL}/api/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    telegramId: telegramId,
+                    name: name,
+                    type: type,
+                    value: 0
+                })
+            });
+        } catch (err) {
+            console.error(`Error joining ${type} leaderboard:`, err);
+        }
+    }
+}
+
+// ===== RAILWAY BACKEND URL =====
+const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app'; // Update this!
 // ===== RAILWAY BACKEND URL =====
 // REPLACE THIS WITH YOUR ACTUAL RAILWAY URL
 const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app';
-
 // ═══════════════ DATA ═══════════════
 const RAMADAN_DAYS = 30;
 const RAMADAN_START = '2026-02-19'; // Ramadan 1 (Toshkent)
@@ -1446,22 +1577,137 @@ async function saveToBackend(type, value) {
     }
 }
 
+// NEW: Join leaderboard function
+async function joinLeaderboard(type) {
+    const nameInput = document.getElementById(`lbName${type.charAt(0).toUpperCase() + type.slice(1)}`);
+    if (!nameInput) return;
+    
+    let name = nameInput.value.trim();
+    
+    // If name is empty, try to get from localStorage
+    if (!name) {
+        name = localStorage.getItem('user_display_name');
+    }
+    
+    if (!name) {
+        alert('Iltimos, ismingizni kiriting');
+        return;
+    }
+    
+    // Get Telegram user
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    const telegramId = user.id || `anon_${Date.now()}`;
+    
+    // Save name to localStorage
+    localStorage.setItem('user_display_name', name);
+    localStorage.setItem(`myName${type.charAt(0).toUpperCase() + type.slice(1)}`, name);
+    
+    // Clear input
+    nameInput.value = '';
+    
+    try {
+        // Register with backend
+        await fetch(`${RAILWAY_URL}/api/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                telegramId: telegramId,
+                name: name
+            })
+        });
+        
+        // Get current score
+        let currentScore = 0;
+        if (type === 'quran') currentScore = state.pageTotal || 0;
+        else if (type === 'dhikr') currentScore = state.dhikrTotal || 0;
+        else if (type === 'sadaqa') {
+            currentScore = (state.charity || []).reduce((s, c) => s + c.amount, 0);
+        }
+        
+        // Initialize score for this type
+        await fetch(`${RAILWAY_URL}/api/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                telegramId: telegramId,
+                name: name,
+                type: type,
+                value: currentScore
+            })
+        });
+        
+        // Show success message
+        alert(`✅ Siz ${type === 'quran' ? 'Qur\'on' : type === 'dhikr' ? 'Zikr' : 'Sadaqa'} leaderboardiga qo'shildingiz!`);
+        
+        // Reload leaderboards
+        loadLeaderboards();
+        
+    } catch (err) {
+        console.error('Error joining leaderboard:', err);
+        alert('Xatolik yuz berdi, ammo mahalliy leaderboardga qo\'shildingiz');
+        
+        // Still add to local leaderboards
+        addToLocalLeaderboard(type, name);
+    }
+}
+
+// Helper function to add user to local leaderboard
+function addToLocalLeaderboard(type, name) {
+    const score = type === 'quran' ? (state.pageTotal || 0) :
+                  type === 'dhikr' ? (state.dhikrTotal || 0) :
+                  (state.charity || []).reduce((s, c) => s + c.amount, 0);
+    
+    if (type === 'quran') {
+        if (!state.quranUsers) state.quranUsers = [];
+        const existing = state.quranUsers.find(u => u.name === name);
+        if (existing) {
+            existing.pages = score;
+        } else {
+            state.quranUsers.push({ name, pages: score });
+        }
+    } else if (type === 'dhikr') {
+        if (!state.dhikrUsers) state.dhikrUsers = [];
+        const existing = state.dhikrUsers.find(u => u.name === name);
+        if (existing) {
+            existing.count = score;
+        } else {
+            state.dhikrUsers.push({ name, count: score });
+        }
+    } else if (type === 'sadaqa') {
+        if (!state.sadaqaUsers) state.sadaqaUsers = [];
+        const existing = state.sadaqaUsers.find(u => u.name === name);
+        if (existing) {
+            existing.amount = score;
+        } else {
+            state.sadaqaUsers.push({ name, amount: score });
+        }
+    }
+    
+    save();
+    renderLocalLeaderboards();
+}
+
+// UPDATED: Load leaderboards from backend
 async function loadLeaderboards() {
     try {
         // Load Quran leaderboard
         const quranRes = await fetch(`${RAILWAY_URL}/api/leaderboard/quran`);
         const quranData = await quranRes.json();
-        renderLB('quranLeaderboard', quranData, u => `${u.score} bet`);
+        // Take top 30 and sort by score
+        const sortedQuran = (quranData || []).sort((a, b) => b.score - a.score).slice(0, 30);
+        renderLB('quranLeaderboard', sortedQuran, u => `${u.score} bet`, u => u.score * 10);
         
         // Load Dhikr leaderboard
         const dhikrRes = await fetch(`${RAILWAY_URL}/api/leaderboard/dhikr`);
         const dhikrData = await dhikrRes.json();
-        renderLB('dhikrLeaderboard', dhikrData, u => `${u.score} zikr`);
+        const sortedDhikr = (dhikrData || []).sort((a, b) => b.score - a.score).slice(0, 30);
+        renderLB('dhikrLeaderboard', sortedDhikr, u => `${u.score} zikr`, u => u.score);
         
         // Load Sadaqa leaderboard
         const sadaqaRes = await fetch(`${RAILWAY_URL}/api/leaderboard/sadaqa`);
         const sadaqaData = await sadaqaRes.json();
-        renderLB('sadaqaLeaderboard', sadaqaData, u => `${(u.score/1000).toFixed(0)}K so'm`);
+        const sortedSadaqa = (sadaqaData || []).sort((a, b) => b.score - a.score).slice(0, 30);
+        renderLB('sadaqaLeaderboard', sortedSadaqa, u => `${(u.score/1000).toFixed(0)}K so'm`, u => Math.floor(u.score/1000));
         
     } catch (err) {
         console.error('Load leaderboard error:', err);
@@ -1471,15 +1717,30 @@ async function loadLeaderboards() {
     }
 }
 
+// UPDATED: Render local leaderboards as fallback
 function renderLocalLeaderboards() {
-    renderLB('quranLeaderboard', (state.quranUsers || []).sort((a, b) => b.pages - a.pages),
-        u => `${u.pages} bet`, u => u.pages * 10);
-    renderLB('dhikrLeaderboard', (state.dhikrUsers || []).sort((a, b) => b.count - a.count),
-        u => `${u.count} zikr`, u => u.count);
-    renderLB('sadaqaLeaderboard', (state.sadaqaUsers || []).sort((a, b) => b.amount - a.amount),
-        u => `${(u.amount / 1000).toFixed(0)}K so'm`, u => Math.floor(u.amount / 1000));
+    // Sort by score (highest first) and take top 30
+    const quranSorted = (state.quranUsers || [])
+        .sort((a, b) => b.pages - a.pages)
+        .slice(0, 30)
+        .map(u => ({ name: u.name, score: u.pages }));
+    
+    const dhikrSorted = (state.dhikrUsers || [])
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 30)
+        .map(u => ({ name: u.name, score: u.count }));
+    
+    const sadaqaSorted = (state.sadaqaUsers || [])
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 30)
+        .map(u => ({ name: u.name, score: u.amount }));
+    
+    renderLB('quranLeaderboard', quranSorted, u => `${u.score} bet`, u => u.score * 10);
+    renderLB('dhikrLeaderboard', dhikrSorted, u => `${u.score} zikr`, u => u.score);
+    renderLB('sadaqaLeaderboard', sadaqaSorted, u => `${(u.score / 1000).toFixed(0)}K so'm`, u => Math.floor(u.score / 1000));
 }
 
+// UPDATED: Render leaderboard with consistent format
 function renderLB(containerId, data, formatFn, scoreFn) {
     const el = document.getElementById(containerId);
     if (!el) return;
@@ -1490,8 +1751,7 @@ function renderLB(containerId, data, formatFn, scoreFn) {
     }
     
     el.innerHTML = data.map((item, i) => {
-        const score = item.score !== undefined ? item.score : 
-                     (item.pages || item.count || item.amount || 0);
+        const score = item.score !== undefined ? item.score : 0;
         const name = item.name || 'Foydalanuvchi';
         
         return `
@@ -1502,11 +1762,16 @@ function renderLB(containerId, data, formatFn, scoreFn) {
                     <div class="lb-name">${name}</div>
                     <div class="lb-sub">${formatFn ? formatFn(item) : `${score} ball`}</div>
                 </div>
-                <div class="lb-score">✨ ${scoreFn ? scoreFn(item) : score * 10}</div>
+                <div class="lb-score">✨ ${scoreFn ? scoreFn(item) : score}</div>
             </div>
         `;
     }).join('');
 }
+
+// Make functions globally available
+window.joinLeaderboard = joinLeaderboard;
+window.loadLeaderboards = loadLeaderboards;
+
 
 // ═══════════════ INITIALIZATION ═══════════════
 document.addEventListener('DOMContentLoaded', function() {
@@ -1572,3 +1837,8 @@ window.toggleFast = toggleFast;
 window.togglePrayer = togglePrayer;
 window.joinLeaderboard = joinLeaderboard;
 window.closeReminder = closeReminder;
+window.showNameModal = showNameModal;
+window.closeNameModal = closeNameModal;
+window.saveTelegramName = saveTelegramName;
+window.joinLeaderboard = joinLeaderboard;
+window.loadLeaderboards = loadLeaderboards;
