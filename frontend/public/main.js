@@ -1,3 +1,80 @@
+// Add this at the top of main.js
+const RAILWAY_URL = 'https://your-app.railway.app'; // You'll get this after deployment
+
+// Then update all fetch calls:
+// FROM:
+fetch('/api/register', {...})
+// TO:
+fetch(`${RAILWAY_URL}/api/register`, {...})
+
+// Also update saveToBackend function:
+async function saveToBackend(type, value) {
+  const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+  const name = localStorage.getItem('user_display_name');
+  
+  if (!user.id || !name) return;
+  
+  try {
+    await fetch(`${RAILWAY_URL}/api/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegramId: user.id,
+        name: name,
+        type: type,
+        value: value
+      })
+    });
+  } catch (err) {
+    console.error('Backend save error:', err);
+  }
+}
+
+// Update loadLeaderboards function:
+async function loadLeaderboards() {
+  try {
+    // Load Quran leaderboard
+    const quranRes = await fetch(`${RAILWAY_URL}/api/leaderboard/quran`);
+    const quranData = await quranRes.json();
+    renderLB('quranLeaderboard', quranData, u => `${u.score} bet`);
+    
+    // Load Dhikr leaderboard
+    const dhikrRes = await fetch(`${RAILWAY_URL}/api/leaderboard/dhikr`);
+    const dhikrData = await dhikrRes.json();
+    renderLB('dhikrLeaderboard', dhikrData, u => `${u.score} zikr`);
+    
+    // Load Sadaqa leaderboard
+    const sadaqaRes = await fetch(`${RAILWAY_URL}/api/leaderboard/sadaqa`);
+    const sadaqaData = await sadaqaRes.json();
+    renderLB('sadaqaLeaderboard', sadaqaData, u => `${(u.score/1000).toFixed(0)}K so'm`);
+    
+  } catch (err) {
+    console.error('Load leaderboard error:', err);
+  }
+}
+
+function renderLB(containerId, data, formatFn) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  
+  if (!data.length) {
+    el.innerHTML = '<div style="text-align:center; padding:20px;">Hali ma\'lumot yo\'q</div>';
+    return;
+  }
+  
+  el.innerHTML = data.map((item, i) => `
+    <div class="leaderboard-item">
+      <div class="lb-rank ${i < 3 ? 'top' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
+      <div class="lb-avatar">${item.name.charAt(0)}</div>
+      <div class="lb-info">
+        <div class="lb-name">${item.name}</div>
+        <div class="lb-sub">${formatFn(item)}</div>
+      </div>
+      <div class="lb-score">✨ ${item.score * 10}</div>
+    </div>
+  `).join('');
+}
+
 // ═══════════════ DATA ═══════════════
 const RAMADAN_DAYS = 30;
 const RAMADAN_START = '2026-02-19'; // Ramadan 1 (Toshkent)
