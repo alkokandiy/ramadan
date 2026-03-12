@@ -1,82 +1,12 @@
+// ===== RAILWAY BACKEND URL =====
+// REPLACE THIS WITH YOUR ACTUAL RAILWAY URL
 const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app';
-// Then update all fetch calls:
-// FROM:
-fetch('/api/register', {...})
-// TO:
-fetch(`${RAILWAY_URL}/api/register`, {...})
-
-// Also update saveToBackend function:
-async function saveToBackend(type, value) {
-  const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
-  const name = localStorage.getItem('user_display_name');
-  
-  if (!user.id || !name) return;
-  
-  try {
-    await fetch(`${RAILWAY_URL}/api/save`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        telegramId: user.id,
-        name: name,
-        type: type,
-        value: value
-      })
-    });
-  } catch (err) {
-    console.error('Backend save error:', err);
-  }
-}
-
-// Update loadLeaderboards function:
-async function loadLeaderboards() {
-  try {
-    // Load Quran leaderboard
-    const quranRes = await fetch(`${RAILWAY_URL}/api/leaderboard/quran`);
-    const quranData = await quranRes.json();
-    renderLB('quranLeaderboard', quranData, u => `${u.score} bet`);
-    
-    // Load Dhikr leaderboard
-    const dhikrRes = await fetch(`${RAILWAY_URL}/api/leaderboard/dhikr`);
-    const dhikrData = await dhikrRes.json();
-    renderLB('dhikrLeaderboard', dhikrData, u => `${u.score} zikr`);
-    
-    // Load Sadaqa leaderboard
-    const sadaqaRes = await fetch(`${RAILWAY_URL}/api/leaderboard/sadaqa`);
-    const sadaqaData = await sadaqaRes.json();
-    renderLB('sadaqaLeaderboard', sadaqaData, u => `${(u.score/1000).toFixed(0)}K so'm`);
-    
-  } catch (err) {
-    console.error('Load leaderboard error:', err);
-  }
-}
-
-function renderLB(containerId, data, formatFn) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  
-  if (!data.length) {
-    el.innerHTML = '<div style="text-align:center; padding:20px;">Hali ma\'lumot yo\'q</div>';
-    return;
-  }
-  
-  el.innerHTML = data.map((item, i) => `
-    <div class="leaderboard-item">
-      <div class="lb-rank ${i < 3 ? 'top' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
-      <div class="lb-avatar">${item.name.charAt(0)}</div>
-      <div class="lb-info">
-        <div class="lb-name">${item.name}</div>
-        <div class="lb-sub">${formatFn(item)}</div>
-      </div>
-      <div class="lb-score">✨ ${item.score * 10}</div>
-    </div>
-  `).join('');
-}
 
 // ═══════════════ DATA ═══════════════
 const RAMADAN_DAYS = 30;
 const RAMADAN_START = '2026-02-19'; // Ramadan 1 (Toshkent)
 const QURAN_TOTAL_PAGES = 604;
+const QURAN_PAGES_PER_JUZ = 20;
 
 const TASHKENT_TIMES = [
     // FEBRUARY 2026
@@ -428,7 +358,7 @@ function showPage(name) {
     if (name === 'quran') { 
         renderQuranHero(); 
         renderQuranLog(); 
-        renderLeaderboards(); 
+        loadLeaderboards(); 
     }
     if (name === 'dhikr') { 
         renderDhikrHero(); 
@@ -446,18 +376,15 @@ function showPage(name) {
 }
 
 function showSubTab(page, tab) {
-    // Find all sub-content divs that start with the page ID
     const contents = document.querySelectorAll(`[id^="${page}-"]`);
     contents.forEach(c => c.classList.remove('active'));
     
     const target = document.getElementById(`${page}-${tab}`);
     if (target) target.classList.add('active');
 
-    // Update tab buttons
     const tabs = document.querySelectorAll(`#page-${page} .sub-tab`);
     tabs.forEach(t => t.classList.remove('active'));
     
-    // Find the clicked tab
     const activeTab = Array.from(tabs).find(t => 
         t.getAttribute('onclick')?.includes(`'${tab}'`)
     );
@@ -524,7 +451,6 @@ function renderTimes() {
     const sahar = parseTimeToDate(saharTime);
     const iftar = parseTimeToDate(iftarTime);
 
-    // Adjust for next day if times are for tomorrow
     if (sahar < now) sahar.setDate(sahar.getDate() + 1);
     if (iftar < now) iftar.setDate(iftar.getDate() + 1);
 
@@ -534,7 +460,6 @@ function renderTimes() {
     setText('saharCountdown', toSahar > 0 ? formatCountdown(toSahar) + ' qoldi' : '—');
     setText('iftarCountdown', toIftar > 0 ? formatCountdown(toIftar) + ' qoldi' : 'Ro\'za tugatildi ✓');
 
-    // Progress bar (sahar → iftar)
     if (now >= sahar && now <= iftar) {
         const totalMs = iftar - sahar;
         const elapsed = now - sahar;
@@ -612,7 +537,6 @@ function renderRamadanInfo() {
         setText('heroDayText', `Ramazon ${day}-kuni · ${left} kun qoldi`);
     }
 
-    // Taraweh info
     const todayKey = getTodayKey();
     const todayRow = TARAWEH_BY_DATE[todayKey];
 
@@ -624,7 +548,6 @@ function renderRamadanInfo() {
         setText('tarawehDesc', `${todayRow.text} (${todayRow.pages})`);
     }
 
-    // Progress dots
     const juzGrid = document.getElementById('juzProgress');
     if (juzGrid) {
         juzGrid.innerHTML = '';
@@ -648,49 +571,7 @@ function onCityChange() {
     setTimesForToday(city);
 }
 
-// ═══════════════ QURAN FUNCTIONS - COMPLETE REWRITE ═══════════════
-const QURAN_PAGES_PER_JUZ = 20;
-
-// Helper function to set text content safely
-function setText(id, text) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = text;
-}
-
-// Get Ramadan end date key
-function getRamadanEndKey() {
-    // Find the last day of Ramadan (day 30)
-    const endDay = typeof TASHKENT_TIMES !== 'undefined' ? TASHKENT_TIMES.find(r => r.ramadan === 30)?.date : null;
-    return endDay || '2026-03-20'; // Fallback
-}
-
-// Calculate which juz a page is in
-function getJuzFromPage(page) {
-    return Math.floor((page - 1) / QURAN_PAGES_PER_JUZ) + 1;
-}
-
-// Get the first page of a juz
-function getFirstPageOfJuz(juz) {
-    return ((juz - 1) * QURAN_PAGES_PER_JUZ) + 1;
-}
-
-// Populate juz dropdown with all 30 juz
-function populateJuzDropdown() {
-    const select = document.getElementById('currentJuz');
-    if (!select) return;
-    
-    select.innerHTML = '';
-    for (let i = 1; i <= 30; i++) {
-        const option = document.createElement('option');
-        option.value = i;
-        option.textContent = `${i}-juz`;
-        select.appendChild(option);
-    }
-}
-
-// ═══════════════ SIMPLIFIED QURAN FUNCTIONS ═══════════════
-
-// Update hasanat calculation
+// ═══════════════ QURAN FUNCTIONS ═══════════════
 function updateHasanat() {
     const pagesInput = document.getElementById('pagesInput');
     if (!pagesInput) return;
@@ -701,7 +582,6 @@ function updateHasanat() {
     if (badge) badge.textContent = `✨ ${hasanat} hasanat`;
 }
 
-// Log today's reading
 function logPages() {
     const pagesInput = document.getElementById('pagesInput');
     if (!pagesInput) return;
@@ -719,72 +599,49 @@ function logPages() {
     
     const today = new Date().toLocaleDateString('uz-Cyrl-UZ');
     
-    // Initialize if needed
     if (typeof state.pageTotal === 'undefined') state.pageTotal = 0;
     if (!state.pageLog) state.pageLog = [];
     if (!state.quranDaily) state.quranDaily = {};
     
-    // Update totals
     state.pageTotal += pages;
     state.pageLog.unshift({ date: today, pages });
     
-    // Update daily tracking
     if (!state.quranDaily[today]) state.quranDaily[today] = 0;
     state.quranDaily[today] += pages;
     
     save();
     
-    // Clear input
     pagesInput.value = 0;
     
-    // Update UI
     updateHasanat();
     renderQuranLog();
     renderQuranHero();
     
-    // Update leaderboard
-    const myName = localStorage.getItem('myNameQuran');
-    if (myName) {
-        if (!state.quranUsers) state.quranUsers = [];
-        const me = state.quranUsers.find(u => u.name === myName);
-        if (me) {
-            me.pages = state.pageTotal;
-        } else {
-            state.quranUsers.push({ name: myName, pages: state.pageTotal });
-        }
-        save();
-        if (typeof renderLeaderboards === 'function') renderLeaderboards();
-    }
+    // Sync with backend
+    saveToBackend('quran', state.pageTotal);
 }
 
-// Render the Kunlik tab with habit tracking
 function renderQuranLog() {
     const total = state.pageTotal || 0;
     const pct = Math.min(100, (total / QURAN_TOTAL_PAGES) * 100);
     
-    // Update progress bar
     const progressBar = document.getElementById('quranProgressBar');
     if (progressBar) progressBar.style.width = pct + '%';
     
     const pagesLabel = document.getElementById('pagesLoggedLabel');
     if (pagesLabel) pagesLabel.textContent = total + ' bet';
     
-    // Get today's date in consistent format
     const today = new Date().toLocaleDateString('uz-Cyrl-UZ');
     const todayPages = state.quranDaily?.[today] || 0;
     
-    // Check if habit is enabled
     const habitEnabled = state.quranHabit?.enabled;
     const dailyTarget = state.quranHabit?.dailyTarget || 0;
     
-    // Update hasanat badge
     const badge = document.getElementById('todayHasanat');
     if (badge) {
         const hasanat = todayPages * 10;
         if (habitEnabled && dailyTarget > 0) {
             badge.textContent = `✨ ${hasanat} · ${todayPages}/${dailyTarget} bet`;
-            
-            // Show daily progress in Kunlik tab
             showDailyProgress(todayPages, dailyTarget);
         } else {
             badge.textContent = `✨ ${hasanat} hasanat`;
@@ -792,20 +649,16 @@ function renderQuranLog() {
         }
     }
     
-    // Render history
     renderPageHistory();
 }
 
-// Show daily progress indicator
 function showDailyProgress(todayPages, dailyTarget) {
     const logDiv = document.getElementById('quran-log');
     if (!logDiv) return;
     
-    // Remove existing progress if any
     const existing = document.getElementById('dailyProgressContainer');
     if (existing) existing.remove();
     
-    // Create progress container
     const progressContainer = document.createElement('div');
     progressContainer.id = 'dailyProgressContainer';
     progressContainer.style.marginTop = '20px';
@@ -835,20 +688,17 @@ function showDailyProgress(todayPages, dailyTarget) {
         </div>
     `;
     
-    // Find the daily-plan-card to insert after
     const dailyCard = logDiv.querySelector('.daily-plan-card');
     if (dailyCard && dailyCard.parentNode) {
         dailyCard.parentNode.insertBefore(progressContainer, dailyCard.nextSibling);
     }
 }
 
-// Hide daily progress
 function hideDailyProgress() {
     const existing = document.getElementById('dailyProgressContainer');
     if (existing) existing.remove();
 }
 
-// Render page reading history
 function renderPageHistory() {
     const hist = document.getElementById('pageLogHistory');
     if (!hist) return;
@@ -873,7 +723,6 @@ function renderPageHistory() {
         `).join('');
 }
 
-// Render Quran hero section stats
 function renderQuranHero() {
     const total = state.pageTotal || 0;
     const juz = Math.floor(total / QURAN_PAGES_PER_JUZ);
@@ -882,7 +731,6 @@ function renderQuranHero() {
     setText('heroPagesDone', total);
     setText('heroJuzDone', juz);
     
-    // Format hasanat (K for thousands)
     let hasanatText;
     if (hasanat >= 1000000) {
         hasanatText = (hasanat/1000000).toFixed(1) + 'M';
@@ -900,7 +748,6 @@ function renderQuranHero() {
     setText('heroBarLeft', total + ' bet');
 }
 
-// Handle plan mode change (Ramadan end / Custom)
 function onPlanModeChange() {
     const modeSelect = document.getElementById('planMode');
     const dateInput = document.getElementById('khatmDate');
@@ -912,13 +759,11 @@ function onPlanModeChange() {
         dateInput.value = getRamadanEndKey();
     } else {
         dateInput.disabled = false;
-        dateInput.value = ''; // Clear for custom input
+        dateInput.value = '';
     }
 }
 
-// Main function to calculate Quran reading plan
 function calcQuranPlan() {
-    // Get input values
     const currentPageInput = document.getElementById('currentPage');
     const modeSelect = document.getElementById('planMode');
     const dateInput = document.getElementById('khatmDate');
@@ -932,45 +777,37 @@ function calcQuranPlan() {
     const mode = modeSelect.value;
     let targetDate = dateInput.value;
     
-    // Validate current page
     if (currentPage < 1 || currentPage > 604) {
         alert('Bet raqami 1 dan 604 gacha bo\'lishi kerak');
         return;
     }
     
-    // For Ramadan end mode, get the correct date
     if (mode === 'ramadanEnd') {
         targetDate = getRamadanEndKey();
     }
     
-    // Validate target date
     if (!targetDate) {
         alert('Iltimos, maqsad sanani tanlang');
         return;
     }
     
-    // Calculate days remaining
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const target = new Date(targetDate + 'T00:00:00');
     target.setHours(0, 0, 0, 0);
     
-    // Check if target date is in the past
     if (target < today) {
         alert('Maqsad sana bugungi kundan keyin bo\'lishi kerak');
         return;
     }
     
-    // Days difference (inclusive)
     let daysLeft = Math.floor((target - today) / (1000 * 60 * 60 * 24)) + 1;
     if (daysLeft < 1) daysLeft = 1;
     
-    // Calculate pages
     const pagesRemaining = 604 - (currentPage - 1);
     const dailyPages = Math.ceil(pagesRemaining / daysLeft);
     
-    // Store plan temporarily
     if (!state.quranPlan) state.quranPlan = {};
     state.quranPlan = {
         currentPage,
@@ -981,14 +818,10 @@ function calcQuranPlan() {
     };
     save();
     
-    // Display results
     displayPlanResults();
-    
-    // Show habit prompt
     showHabitPrompt();
 }
 
-// Display the calculation results
 function displayPlanResults() {
     const plan = state.quranPlan;
     if (!plan) return;
@@ -1012,7 +845,6 @@ function displayPlanResults() {
     }
 }
 
-// Show prompt asking user to save as habit
 function showHabitPrompt() {
     const plan = state.quranPlan;
     if (!plan) return;
@@ -1020,15 +852,12 @@ function showHabitPrompt() {
     const resultDiv = document.getElementById('quranPlanResult');
     if (!resultDiv) return;
     
-    // Remove existing prompt if any
     const existingPrompt = document.getElementById('habitPrompt');
     if (existingPrompt) existingPrompt.remove();
     
-    // Remove existing message if any
     const existingMessage = document.getElementById('habitMessage');
     if (existingMessage) existingMessage.remove();
     
-    // Create new prompt
     const promptDiv = document.createElement('div');
     promptDiv.id = 'habitPrompt';
     promptDiv.style.marginTop = '20px';
@@ -1054,7 +883,6 @@ function showHabitPrompt() {
     resultDiv.appendChild(promptDiv);
 }
 
-// Save or discard the habit
 function saveQuranHabit(enable) {
     const plan = state.quranPlan;
     const promptEl = document.getElementById('habitPrompt');
@@ -1075,7 +903,6 @@ function saveQuranHabit(enable) {
     messageDiv.style.transition = 'opacity 0.5s ease';
     
     if (enable && plan) {
-        // Save the habit
         if (!state.quranHabit) state.quranHabit = {};
         state.quranHabit = {
             enabled: true,
@@ -1133,41 +960,6 @@ function saveQuranHabit(enable) {
     renderQuranLog();
 }
 
-// Initialize Quran page
-function initQuranPage() {
-    // Set default current page
-    const pageInput = document.getElementById('currentPage');
-    if (pageInput) pageInput.value = 1;
-    
-    // Set default target date
-    const dateInput = document.getElementById('khatmDate');
-    if (dateInput) {
-        dateInput.value = getRamadanEndKey();
-        dateInput.disabled = true;
-    }
-    
-    // Set default mode
-    const modeSelect = document.getElementById('planMode');
-    if (modeSelect) modeSelect.value = 'ramadanEnd';
-    
-    renderQuranHero();
-    renderQuranLog();
-}
-
-// Make functions globally available
-window.onPlanModeChange = onPlanModeChange;
-window.calcQuranPlan = calcQuranPlan;
-window.saveQuranHabit = saveQuranHabit;
-window.updateHasanat = updateHasanat;
-window.logPages = logPages;
-
-// Call init when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Only initialize if elements exist - FIXED: Check for currentPage instead of currentJuz
-    if (document.getElementById('currentPage')) {
-        initQuranPage();
-    }
-});
 // ═══════════════ DHIKR FUNCTIONS ═══════════════
 let currentDhikr = { name: 'Subhanalloh', arabic: 'سُبْحَانَ اللَّهِ', target: 33 };
 let tapCurrent = 0;
@@ -1216,15 +1008,8 @@ function completeDhikr() {
     tapCurrent = 0;
     setText('tapCount', 0);
 
-    // Update leaderboard
-    const myName = localStorage.getItem('myNameDhikr');
-    if (myName) {
-        const me = state.dhikrUsers.find(u => u.name === myName);
-        if (me) me.count = state.dhikrTotal;
-        else state.dhikrUsers.push({ name: myName, count: state.dhikrTotal });
-        save();
-        renderLeaderboards();
-    }
+    // Sync with backend
+    saveToBackend('dhikr', state.dhikrTotal);
 }
 
 function renderDhikrStats() {
@@ -1271,6 +1056,10 @@ function logCharity() {
     document.getElementById('charityNote').value = '';
     renderCharity();
     renderSadaqaHero();
+    
+    // Sync with backend
+    const total = state.charity.reduce((s, c) => s + c.amount, 0);
+    saveToBackend('sadaqa', total);
 }
 
 function renderCharity() {
@@ -1298,16 +1087,6 @@ function renderCharity() {
             <div class="charity-log-amount">${c.amount.toLocaleString()} so'm</div>
         </div>
     `).join('');
-
-    // Update leaderboard
-    const myName = localStorage.getItem('myNameSadaqa');
-    if (myName) {
-        const me = state.sadaqaUsers.find(u => u.name === myName);
-        if (me) me.amount = total;
-        else state.sadaqaUsers.push({ name: myName, amount: total });
-        save();
-        renderLeaderboards();
-    }
 }
 
 function renderSadaqaHero() {
@@ -1363,9 +1142,8 @@ function renderCalendar() {
     const ramadanDay = getRamadanDay();
     const startDate = getRamadanStartDate();
 
-    // Padding for day of week (Monday = 1, Sunday = 0 in JS)
     const startDay = startDate.getDay();
-    const pad = startDay === 0 ? 6 : startDay - 1; // Convert to Monday=0
+    const pad = startDay === 0 ? 6 : startDay - 1;
     for (let i = 0; i < pad; i++) {
         const emptyDiv = document.createElement('div');
         emptyDiv.style.visibility = 'hidden';
@@ -1456,7 +1234,6 @@ function renderNamazHero() {
     const prayerTimes5 = [row.tong, row.peshin, row.asr, row.shom, row.xufton];
     const prayerNames = ['Bomdod', 'Peshin', 'Asr', 'Shom', 'Xufton'];
 
-    // Find current prayer
     let activeIdx = -1;
     let nextIdx = -1;
 
@@ -1494,7 +1271,6 @@ function renderNamazHero() {
         setText('currentPrayerCountdown', 'Xufton o\'tdi');
     }
 
-    // Render prayer ribbon
     const ribbon = document.getElementById('prayerRibbon');
     if (ribbon) {
         ribbon.innerHTML = PRAYERS.map((p, i) => {
@@ -1528,7 +1304,6 @@ function updateNamazStats() {
 
     setText('namazTodayVal', `${prayersDoneToday}/5`);
 
-    // Calculate streak
     let streak = 0;
     const today = new Date();
     for (let i = 0; i < RAMADAN_DAYS; i++) {
@@ -1550,7 +1325,6 @@ function updateNamazStats() {
     }
     setText('namazStreakVal', streak);
 
-    // Calculate weekly percentage
     let totalFarz = 0, doneFarz = 0;
     for (let i = 0; i < 7; i++) {
         const d = new Date(today);
@@ -1578,7 +1352,6 @@ function renderWeeklyGrid() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Get week start (Monday)
     const dayOfWeek = today.getDay();
     const monOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const weekStart = new Date(today);
@@ -1591,12 +1364,10 @@ function renderWeeklyGrid() {
         return d;
     });
 
-    // Week range label
     const fmt = d => `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`;
     setText('weekRange', `${fmt(dates[0])} – ${fmt(dates[6])}`);
 
-    // Build grid HTML
-    let html = '<div></div>'; // top-left corner
+    let html = '<div></div>';
     dates.forEach((d, i) => {
         const isToday = d.toDateString() === today.toDateString();
         html += `<div class="wg-day-header ${isToday ? 'today-col' : ''}">${dayLabels[i]}<br><span style="font-size:0.58rem">${d.getDate()}</span></div>`;
@@ -1616,7 +1387,6 @@ function renderWeeklyGrid() {
             }
             
             const allDone = farzDone === p.farz;
-            const missed = !isFuture && !allDone;
             
             let cls = isFuture ? 'wgc-future' : allDone ? 'wgc-done' : 'wgc-missed';
             html += `<div class="wg-cell ${cls}" onclick="togglePrayer('${rKey}', ${p.farz})"></div>`;
@@ -1653,20 +1423,55 @@ function togglePrayer(rKey, farzCount) {
     renderWeeklyGrid();
 }
 
-// ═══════════════ LEADERBOARD FUNCTIONS ═══════════════
-function joinLeaderboard(type) {
-    const nameEl = document.getElementById(`lbName${type.charAt(0).toUpperCase() + type.slice(1)}`);
-    if (!nameEl) return;
+// ═══════════════ LEADERBOARD FUNCTIONS (BACKEND SYNC) ═══════════════
+async function saveToBackend(type, value) {
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    const name = localStorage.getItem('user_display_name');
     
-    const name = nameEl.value.trim();
-    if (!name) return;
+    if (!user.id || !name) return;
     
-    localStorage.setItem(`myName${type.charAt(0).toUpperCase() + type.slice(1)}`, name);
-    nameEl.value = '';
-    renderLeaderboards();
+    try {
+        await fetch(`${RAILWAY_URL}/api/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                telegramId: user.id,
+                name: name,
+                type: type,
+                value: value
+            })
+        });
+    } catch (err) {
+        console.error('Backend save error:', err);
+    }
 }
 
-function renderLeaderboards() {
+async function loadLeaderboards() {
+    try {
+        // Load Quran leaderboard
+        const quranRes = await fetch(`${RAILWAY_URL}/api/leaderboard/quran`);
+        const quranData = await quranRes.json();
+        renderLB('quranLeaderboard', quranData, u => `${u.score} bet`);
+        
+        // Load Dhikr leaderboard
+        const dhikrRes = await fetch(`${RAILWAY_URL}/api/leaderboard/dhikr`);
+        const dhikrData = await dhikrRes.json();
+        renderLB('dhikrLeaderboard', dhikrData, u => `${u.score} zikr`);
+        
+        // Load Sadaqa leaderboard
+        const sadaqaRes = await fetch(`${RAILWAY_URL}/api/leaderboard/sadaqa`);
+        const sadaqaData = await sadaqaRes.json();
+        renderLB('sadaqaLeaderboard', sadaqaData, u => `${(u.score/1000).toFixed(0)}K so'm`);
+        
+    } catch (err) {
+        console.error('Load leaderboard error:', err);
+        
+        // Fallback to local data if backend fails
+        renderLocalLeaderboards();
+    }
+}
+
+function renderLocalLeaderboards() {
     renderLB('quranLeaderboard', (state.quranUsers || []).sort((a, b) => b.pages - a.pages),
         u => `${u.pages} bet`, u => u.pages * 10);
     renderLB('dhikrLeaderboard', (state.dhikrUsers || []).sort((a, b) => b.count - a.count),
@@ -1675,26 +1480,32 @@ function renderLeaderboards() {
         u => `${(u.amount / 1000).toFixed(0)}K so'm`, u => Math.floor(u.amount / 1000));
 }
 
-function renderLB(containerId, users, subFn, scoreFn) {
+function renderLB(containerId, data, formatFn, scoreFn) {
     const el = document.getElementById(containerId);
     if (!el) return;
     
-    if (!users.length) {
-        el.innerHTML = '<div style="font-size:0.9rem; color:var(--text-muted); text-align:center; padding:20px;">Hali ishtirokchilar yo\'q</div>';
+    if (!data || !data.length) {
+        el.innerHTML = '<div style="font-size:0.9rem; color:var(--text-muted); text-align:center; padding:20px;">Hali ma\'lumot yo\'q</div>';
         return;
     }
     
-    el.innerHTML = users.slice(0, 10).map((u, i) => `
-        <div class="leaderboard-item">
-            <div class="lb-rank ${i < 3 ? 'top' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
-            <div class="lb-avatar">${u.name.charAt(0)}</div>
-            <div class="lb-info">
-                <div class="lb-name">${u.name}</div>
-                <div class="lb-sub">${subFn(u)}</div>
+    el.innerHTML = data.map((item, i) => {
+        const score = item.score !== undefined ? item.score : 
+                     (item.pages || item.count || item.amount || 0);
+        const name = item.name || 'Foydalanuvchi';
+        
+        return `
+            <div class="leaderboard-item">
+                <div class="lb-rank ${i < 3 ? 'top' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
+                <div class="lb-avatar">${name.charAt(0)}</div>
+                <div class="lb-info">
+                    <div class="lb-name">${name}</div>
+                    <div class="lb-sub">${formatFn ? formatFn(item) : `${score} ball`}</div>
+                </div>
+                <div class="lb-score">✨ ${scoreFn ? scoreFn(item) : score * 10}</div>
             </div>
-            <div class="lb-score">${scoreFn(u)} ✨</div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // ═══════════════ INITIALIZATION ═══════════════
@@ -1706,7 +1517,7 @@ document.addEventListener('DOMContentLoaded', function() {
     renderDhikrStats();
     renderCharity();
     renderQuranLog();
-    renderLeaderboards();
+    renderQuranHero();
     generateRozaStars();
 
     // Set default khatm date to end of Ramadan
@@ -1722,6 +1533,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const cityEl = document.getElementById('citySelect');
     if (cityEl) cityEl.value = getSelectedCity();
 
+    // Load leaderboards from backend
+    if (localStorage.getItem('user_display_name')) {
+        loadLeaderboards();
+    } else {
+        renderLocalLeaderboards();
+    }
+
     // Start timers
     setInterval(() => {
         if (document.getElementById('page-home').classList.contains('active')) {
@@ -1736,90 +1554,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }, 1000);
 });
 
-// ═══════════════ TELEGRAM SYNC ═══════════════
-
-// Save user data to backend
-async function saveToBackend(type, value) {
-    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
-    const name = localStorage.getItem('user_display_name');
-    
-    if (!user.id || !name) return;
-    
-    try {
-      await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          telegramId: user.id,
-          name: name,
-          type: type,
-          value: value
-        })
-      });
-    } catch (err) {
-      console.error('Backend save error:', err);
-    }
-  }
-  
-  // Load leaderboard from backend
-  async function loadLeaderboards() {
-    try {
-      const res = await fetch('/api/leaderboard');
-      const data = await res.json();
-      
-      // Update Quran leaderboard
-      if (data.quran && document.getElementById('quranLeaderboard')) {
-        const html = data.quran.map((u, i) => `
-          <div class="leaderboard-item">
-            <div class="lb-rank ${i < 3 ? 'top' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
-            <div class="lb-avatar">${u.name.charAt(0)}</div>
-            <div class="lb-info">
-              <div class="lb-name">${u.name}</div>
-              <div class="lb-sub">${u.pages} bet</div>
-            </div>
-            <div class="lb-score">${u.pages * 10} ✨</div>
-          </div>
-        `).join('');
-        document.getElementById('quranLeaderboard').innerHTML = html || '<div style="text-align:center; padding:20px;">Hali ma\'lumot yo\'q</div>';
-      }
-      
-      // Similar for dhikr and sadaqa...
-      if (data.dhikr && document.getElementById('dhikrLeaderboard')) {
-        // ... render dhikr leaderboard
-      }
-      
-      if (data.sadaqa && document.getElementById('sadaqaLeaderboard')) {
-        // ... render sadaqa leaderboard
-      }
-      
-    } catch (err) {
-      console.error('Load leaderboard error:', err);
-    }
-  }
-  
-  // Override existing functions to sync
-  const originalLogPages = window.logPages;
-  window.logPages = function() {
-    if (originalLogPages) originalLogPages();
-    saveToBackend('quran', state.pageTotal || 0);
-  };
-  
-  const originalCompleteDhikr = window.completeDhikr;
-  window.completeDhikr = function() {
-    if (originalCompleteDhikr) originalCompleteDhikr();
-    saveToBackend('dhikr', state.dhikrTotal || 0);
-  };
-  
-  const originalLogCharity = window.logCharity;
-  window.logCharity = function() {
-    if (originalLogCharity) originalLogCharity();
-    const total = (state.charity || []).reduce((s, c) => s + c.amount, 0);
-    saveToBackend('sadaqa', total);
-  };
-  
-  // Load leaderboard when page loads
-  document.addEventListener('DOMContentLoaded', function() {
-    if (localStorage.getItem('user_display_name')) {
-      loadLeaderboards();
-    }
-  });
+// Make functions globally available
+window.showPage = showPage;
+window.showSubTab = showSubTab;
+window.onCityChange = onCityChange;
+window.onPlanModeChange = onPlanModeChange;
+window.calcQuranPlan = calcQuranPlan;
+window.saveQuranHabit = saveQuranHabit;
+window.updateHasanat = updateHasanat;
+window.logPages = logPages;
+window.selectDhikr = selectDhikr;
+window.tap = tap;
+window.resetDhikr = resetDhikr;
+window.completeDhikr = completeDhikr;
+window.logCharity = logCharity;
+window.toggleFast = toggleFast;
+window.togglePrayer = togglePrayer;
+window.joinLeaderboard = joinLeaderboard;
+window.closeReminder = closeReminder;
