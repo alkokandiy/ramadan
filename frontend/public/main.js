@@ -3,7 +3,11 @@
 
 // ===== RAILWAY BACKEND URL =====
 // DEFINE THIS FIRST BEFORE ANY FUNCTIONS THAT USE IT!
-const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app'; // Your actual Railway URL
+const RAILWAY_URL = 'https://ramadan-production-8799.up.railway.app';
+
+// At the VERY TOP of your file (after RAILWAY_URL)
+console.log('🚀 main.js loaded');
+console.log('RAILWAY_URL:', RAILWAY_URL);
 
 // Initialize Telegram Web App
 let tg = window.Telegram?.WebApp;
@@ -526,13 +530,21 @@ let saharTime = null;
 let iftarTime = null;
 
 function setTimesForToday(city = getSelectedCity()) {
+    // ADD THESE DEBUG LINES AT THE VERY START
+    console.log('📍 setTimesForToday called for city:', city);
+    
     if (!CITY_TIMES[city]) city = 'Toshkent';
 
     const select = document.getElementById('citySelect');
     if (select) select.value = city;
 
     const todayKey = getTodayKey();
+    // ADD THIS DEBUG LINE
+    console.log('Today key:', todayKey);
+    
     const row = CITY_TIMES_BY_DATE[city]?.[todayKey];
+    // ADD THIS DEBUG LINE
+    console.log('Row data:', row);
     
     if (!row) {
         saharTime = null;
@@ -1803,6 +1815,14 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         renderLocalLeaderboards();
     }
+    
+    // ===== ADD THESE DEBUG LINES AT THE VERY END =====
+    console.log('✅ DOMContentLoaded completed');
+    console.log('saharTime:', saharTime);
+    console.log('iftarTime:', iftarTime);
+    console.log('Current city:', getSelectedCity());
+    console.log('Today date:', new Date().toDateString());
+});
 
     // Start timers
     setInterval(() => {
