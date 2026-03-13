@@ -42,6 +42,92 @@ if (tg) {
     console.log('Not running in Telegram');
 }
 
+// ===== TELEGRAM MODAL FUNCTIONS (MOVED FROM HTML) =====
+
+// Show name modal
+function showNameModal() {
+    const modal = document.getElementById('nameModal');
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    const input = document.getElementById('telegramNameInput');
+    if (input) input.value = user.username || '';
+    if (modal) modal.style.display = 'flex';
+    console.log('📝 Name modal shown');
+}
+
+// Close name modal
+function closeNameModal() {
+    const modal = document.getElementById('nameModal');
+    if (modal) modal.style.display = 'none';
+    console.log('📝 Name modal closed');
+}
+
+// Save telegram name
+async function saveTelegramName() {
+    const input = document.getElementById('telegramNameInput');
+    const name = input?.value.trim();
+    
+    if (!name) {
+        alert('Iltimos, ismingizni kiriting');
+        return;
+    }
+    
+    // Save locally
+    localStorage.setItem('user_display_name', name);
+    console.log('✅ Name saved:', name);
+    closeNameModal();
+    
+    // Register with backend
+    const user = JSON.parse(localStorage.getItem('telegram_user') || '{}');
+    
+    try {
+        const response = await fetch(`${RAILWAY_URL}/api/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                telegramId: user.id,
+                name: name
+            })
+        });
+        
+        if (response.ok) {
+            console.log('✅ User registered successfully');
+            // Join all leaderboards automatically
+            await joinAllLeaderboards(name, user.id);
+            // Load leaderboards
+            if (typeof loadLeaderboards === 'function') loadLeaderboards();
+        } else {
+            console.error('❌ Registration failed');
+            if (typeof renderLocalLeaderboards === 'function') renderLocalLeaderboards();
+        }
+    } catch (err) {
+        console.error('❌ Registration error:', err);
+        if (typeof renderLocalLeaderboards === 'function') renderLocalLeaderboards();
+    }
+}
+
+// Join all leaderboards function
+async function joinAllLeaderboards(name, telegramId) {
+    const types = ['quran', 'dhikr', 'sadaqa'];
+    
+    for (const type of types) {
+        try {
+            await fetch(`${RAILWAY_URL}/api/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    telegramId: telegramId,
+                    name: name,
+                    type: type,
+                    value: 0
+                })
+            });
+        } catch (err) {
+            console.error(`Error joining ${type} leaderboard:`, err);
+        }
+    }
+}
+
+
 // Name Modal Functions
 function showNameModal() {
     const modal = document.getElementById('nameModal');
@@ -1861,3 +1947,7 @@ window.closeNameModal = closeNameModal;
 window.saveTelegramName = saveTelegramName;
 window.joinLeaderboard = joinLeaderboard;
 window.loadLeaderboards = loadLeaderboards;
+window.showNameModal = showNameModal;
+window.closeNameModal = closeNameModal;
+window.saveTelegramName = saveTelegramName;
+window.joinAllLeaderboards = joinAllLeaderboards;
