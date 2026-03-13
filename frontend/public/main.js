@@ -1902,14 +1902,6 @@ document.addEventListener('DOMContentLoaded', function() {
         renderLocalLeaderboards();
     }
     
-    // ===== ADD THESE DEBUG LINES AT THE VERY END =====
-    console.log('✅ DOMContentLoaded completed');
-    console.log('saharTime:', saharTime);
-    console.log('iftarTime:', iftarTime);
-    console.log('Current city:', getSelectedCity());
-    console.log('Today date:', new Date().toDateString());
-});
-
     // Start timers
     setInterval(() => {
         if (document.getElementById('page-home').classList.contains('active')) {
@@ -1922,6 +1914,13 @@ document.addEventListener('DOMContentLoaded', function() {
             renderNamazHero();
         }
     }, 1000);
+
+    // ===== ADD THESE DEBUG LINES AT THE VERY END =====
+    console.log('✅ DOMContentLoaded completed');
+    console.log('saharTime:', saharTime);
+    console.log('iftarTime:', iftarTime);
+    console.log('Current city:', getSelectedCity());
+    console.log('Today date:', new Date().toDateString());
 });
 
 // Make functions globally available
